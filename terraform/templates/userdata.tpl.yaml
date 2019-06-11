@@ -1,0 +1,57 @@
+Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+MIME-Version: 1.0
+  --==BOUNDARY==
+Content-Type: text/cloud-boothook; charset="us-ascii"
+
+cloud-init-per once proxy
+
+# Set the proxy hostname and port
+PROXY="${PROXY_URL}:80"
+
+# Create the docker systemd directory
+mkdir -p /etc/systemd/system/docker.service.d
+
+# Configure yum to use the proxy
+cat << EOF >> /etc/yum.conf
+proxy=http://${PROXY_URL}
+EOF
+
+# Set the proxy for future processes, and use as an include file
+cat << EOF >> /etc/environment
+http_proxy=http://${PROXY_URL}
+https_proxy=http://${PROXY_URL}
+HTTP_PROXY=http://${PROXY_URL}
+HTTPS_PROXY=http://${PROXY_URL}
+no_proxy=${VPC_CIDR_RANGE},localhost,127.0.0.1,169.254.169.254,.internal
+NO_PROXY=${VPC_CIDR_RANGE},localhost,127.0.0.1,169.254.169.254,.internal
+EOF
+
+# Configure docker with the proxy
+cat << EOF >> /etc/systemd/system/docker.service.d/proxy.conf
+[Service]
+EnvironmentFile=/etc/environment
+EOF
+
+# Pick up the docker systemd directory
+systemctl daemon-reload
+
+# Restart docker so it fetch the proxy parameters
+systemctl stop docker
+systemctl start docker
+
+# Configure the kubelet with the proxy
+cat << EOF >> /etc/systemd/system/kubelet.service.d/proxy.conf
+[Service]
+EnvironmentFile=/etc/environment
+EOF
+--==BOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+set -o xtrace
+
+# Set the proxy variables before running the bootstrap.sh script
+set -a
+source /etc/environment
+/etc/eks/bootstrap.sh --b64-cluster-ca '$${cluster_auth_base64}' --apiserver-endpoint '$${endpoint}' $${bootstrap_extra_args} --kubelet-extra-args '$${kubelet_extra_args}' '$${cluster_name}'
+--==BOUNDARY==--

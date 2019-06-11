@@ -1,0 +1,49 @@
+Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+MIME-Version: 1.0
+--==BOUNDARY==
+Content-Type: text/cloud-boothook; charset="us-ascii"
+cloud-init-per once proxy
+# Set the proxy hostname and port
+PROXY="proxy.local:3128"
+# Create the docker systemd directory
+mkdir -p /etc/systemd/system/docker.service.d
+# Configure yum to use the proxycat << EOF >> /etc/yum.conf
+proxy=http: //$PROXY
+EOF
+# Set the proxy for future processes, and use as an include file
+cat << EOF >> /etc/environment
+http_proxy=http: //$PROXY
+https_proxy=http: //$PROXY
+HTTP_PROXY=http: //$PROXY
+HTTPS_PROXY=http: //$PROXY
+no_proxy=<VPC CIDR RANGE>,localhost,127.0.0.1,169.254.169.254,.internal
+NO_PROXY=<VPC CIDR RANGE>,localhost,127.0.0.1,169.254.169.254,.internal
+EOF
+# Configure docker with the proxy
+cat << EOF >> /etc/systemd/system/docker.service.d/proxy.conf
+[Service]
+EnvironmentFile=/etc/environment
+EOF
+# Pick up the docker systemd directory
+systemctl daemon-reload
+# Restart docker so it fetch the proxy parameters
+systemctl stop docker
+systemctl start docker
+# Configure the kubelet with the proxy
+cat << EOF >> /etc/systemd/system/kubelet.service.d/proxy.conf
+[Service]
+EnvironmentFile=/etc/environment
+EOF
+--==BOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+#!/bin/bash
+set -o xtrace
+# Set the proxy variables before running the bootstrap.sh script
+set -a
+source /etc/environment
+/etc/eks/bootstrap.sh ${ClusterName} ${BootstrapArguments}
+/opt/aws/bin/cfn-signal --exit-code $? \
+--stack ${AWS::StackName} \
+--resource NodeGroup \
+--region ${AWS::Region}
+--==BOUNDARY==--

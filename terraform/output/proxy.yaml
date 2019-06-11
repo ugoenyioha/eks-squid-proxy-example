@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxy-environment-variables
+  namespace: kube-system
+data:
+  HTTPS_PROXY: http://squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com
+  HTTP_PROXY: http://squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com
+  NO_PROXY: 172.20.0.0/16,localhost,127.0.0.1,10.0.1.0/24,10.0.2.0/24,10.0.3.0/24,169.254.169.254,.internal

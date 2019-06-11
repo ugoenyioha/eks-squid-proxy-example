@@ -1,0 +1,57 @@
+Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+MIME-Version: 1.0
+  --==BOUNDARY==
+Content-Type: text/cloud-boothook; charset="us-ascii"
+
+cloud-init-per once proxy
+
+# Set the proxy hostname and port
+PROXY="squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com:80"
+
+# Create the docker systemd directory
+mkdir -p /etc/systemd/system/docker.service.d
+
+# Configure yum to use the proxy
+cat << EOF >> /etc/yum.conf
+proxy=http://squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com
+EOF
+
+# Set the proxy for future processes, and use as an include file
+cat << EOF >> /etc/environment
+http_proxy=http://squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com
+https_proxy=http://squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com
+HTTP_PROXY=http://squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com
+HTTPS_PROXY=http://squid-s3-proxy-dev-e7855d98f23c9bd3.elb.us-west-2.amazonaws.com
+no_proxy=10.0.1.0/24,10.0.2.0/24,10.0.3.0/24,localhost,127.0.0.1,169.254.169.254,.internal
+NO_PROXY=10.0.1.0/24,10.0.2.0/24,10.0.3.0/24,localhost,127.0.0.1,169.254.169.254,.internal
+EOF
+
+# Configure docker with the proxy
+cat << EOF >> /etc/systemd/system/docker.service.d/proxy.conf
+[Service]
+EnvironmentFile=/etc/environment
+EOF
+
+# Pick up the docker systemd directory
+systemctl daemon-reload
+
+# Restart docker so it fetch the proxy parameters
+systemctl stop docker
+systemctl start docker
+
+# Configure the kubelet with the proxy
+cat << EOF >> /etc/systemd/system/kubelet.service.d/proxy.conf
+[Service]
+EnvironmentFile=/etc/environment
+EOF
+--==BOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+set -o xtrace
+
+# Set the proxy variables before running the bootstrap.sh script
+set -a
+source /etc/environment
+/etc/eks/bootstrap.sh --b64-cluster-ca '${cluster_auth_base64}' --apiserver-endpoint '${endpoint}' ${bootstrap_extra_args} --kubelet-extra-args '${kubelet_extra_args}' '${cluster_name}'
+--==BOUNDARY==--
